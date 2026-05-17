@@ -21,6 +21,8 @@ from location_engine import estimate_location
 from advanced_profiler import compute_advanced_metrics
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY")
+
 CONFIG_FILE = "config.json"
 
 # Temporary session-only storage

@@ -865,7 +865,9 @@ def get_records():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-# ================= SAMPLE DATA DOWNLOAD =================
+# ======================================================================
+#   SAMPLE DATA DOWNLOADS
+# ======================================================================
 
 @app.route('/download/sample-cdr')
 def download_sample_cdr():
@@ -879,7 +881,7 @@ def download_sample_cdr():
 def download_sample_location():
     return send_from_directory(
         'sample_data',
-        'sample_locations.xlsx',
+        'sample_location.xlsx',
         as_attachment=True
     )
 # ======================================================================

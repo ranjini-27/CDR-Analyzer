@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+temp_uploads/
+uploads/
+cases/
+instance/
+.vscode/
+app/

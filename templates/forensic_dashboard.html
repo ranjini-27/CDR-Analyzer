@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDR Forensic Intelligence | Clean Map View</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #020617; overflow: hidden; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0F172A; }
+    ::-webkit-scrollbar-thumb { background: #8B5CF6; border-radius: 10px; }
+    .card-hover { transition: all 0.2s ease; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -6px rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.3); }
+    .heatmap-cell { transition: 0.1s; }
+    .heatmap-cell:hover { transform: scale(1.02); filter: brightness(1.2); }
+    .sidebar-section-title { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #64748B; margin: 16px 12px 8px 12px; }
+    .sidebar-item { transition: all 0.2s; margin: 2px 8px; border-radius: 8px; }
+    .sidebar-item.active { background: rgba(139, 92, 246, 0.2); box-shadow: 0 0 10px rgba(139, 92, 246, 0.4); }
+    .sidebar-item.active i { color: #a78bfa; }
+    .sidebar-item:hover:not(.active) { background: rgba(255,255,255,0.05); transform: translateX(4px); }
+    .insight-card { transition: all 0.2s; }
+    .insight-card:hover { background: rgba(15, 23, 42, 0.9); border-color: rgba(139, 92, 246, 0.3); }
+    .heatmap-grid {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 4px;
+      width: 100%;
+      flex: 1;
+      grid-auto-rows: minmax(0, 1fr);
+    }
+    .heatmap-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 500;
+      transition: 0.1s;
+    }
+    .radar-wrapper {
+      height: 100%;
+      max-height: 350px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .table-scroll {
+      overflow-y: auto;
+      overflow-x: auto;
+      max-height: calc(100% - 60px);
+    }
+    .full-map-container {
+      height: 100%;
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      overflow: hidden;
+      background: #0A0E18;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-200 h-screen overflow-hidden">
+
+<!-- ==================== LANDING PAGE ==================== -->
+<div id="landingPage" class="h-screen w-full flex">
+  <aside class="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800/50 flex flex-col h-full shadow-inner">
+    <div class="p-6 border-b border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-lg">
+          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <span class="font-bold text-lg tracking-tight">CDR Forensics</span>
+      </div>
+    </div>
+    <nav class="flex-1 p-4 space-y-1">
+
+  <!-- NEW CASE -->
+  <div class="nav-item text-slate-400 hover:bg-slate-800/50 rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-3 cursor-pointer transition" data-view="new-case">
+    <i class="fas fa-plus-circle w-4"></i> New Case
+  </div>
+
+  <!-- EXISTING CASES -->
+  <div class="nav-item text-slate-400 hover:bg-slate-800/50 rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-3 cursor-pointer transition" data-view="existing-cases">
+    <i class="fas fa-folder-open w-4"></i> Existing Cases
+  </div>
+
+  <!-- SAMPLE DATA -->
+  <div class="nav-item text-slate-400 hover:bg-slate-800/50 rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-3 cursor-pointer transition" data-view="sample-data">
+    <i class="fas fa-download w-4"></i> Sample Data
+  </div>
+
+</nav>
+    <div class="p-4 border-t border-slate-800 text-xs text-slate-500">v2.0 | Forensics</div>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto p-6">
+    <div id="dynamicView">
+      <div id="newCaseView" class="max-w-2xl mx-auto mt-20">
+        <div class="text-center mb-8">
+          <div class="w-16 h-16 bg-purple-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-fingerprint text-3xl text-purple-400"></i>
+          </div>
+          <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Create New Case</h1>
+          <p class="text-slate-400 mt-2">Start a new forensic investigation</p>
+        </div>
+        <div class="bg-slate-900/50 rounded-2xl border border-slate-800 p-6 shadow-xl">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Case Name</label>
+          <input type="text" id="newCaseName" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 transition" placeholder="e.g., Smith_Jones_2025">
+          <div class="mt-6">
+            <button id="newCaseSubmitBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20">
+              <i class="fas fa-plus-circle"></i> Create Case
+            </button>
+          </div>
+          <div id="newCaseError" class="text-red-400 text-sm mt-3 text-center"></div>
+        </div>
+      </div>
+      <div id="existingCasesView" style="display: none;">
+        <div class="bg-slate-900/40 rounded-xl border border-slate-800 overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-800"><h2 class="font-semibold text-slate-200">Existing Investigations</h2></div>
+          <div id="existingCasesList" class="divide-y divide-slate-800">
+  <div class="px-6 py-8 text-center text-slate-500 text-sm">
+    No investigations available
+  </div>
+</div>
+        </div>
+      </div>
+
+  <!-- SAMPLE DATA VIEW -->
+  <div id="sampleDataView" style="display: none;" class="p-8">
+
+    <div class="max-w-3xl mx-auto">
+
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-8">
+
+        <h2 class="text-2xl font-bold text-white mb-3">
+          Sample Data Files
+        </h2>
+
+        <p class="text-slate-400 mb-8">
+          Download sample files to test the CDR analysis system.
+        </p>
+
+        <!-- SAMPLE CDR -->
+<div class="bg-slate-800/50 rounded-xl p-5 mb-5 border border-slate-700">
+  <div class="flex items-center justify-between">
+
+    <div>
+      <h3 class="text-lg font-semibold text-white">
+        Sample CDR CSV
+      </h3>
+
+      <p class="text-sm text-slate-400 mt-1">
+        Example call detail records file.
+      </p>
+    </div>
+
+    <a href="/download/sample-cdr"
+       class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition">
+      Download
+    </a>
+
+  </div>
+</div>
+
+<!-- SAMPLE LOCATION -->
+<div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700">
+  <div class="flex items-center justify-between">
+
+    <div>
+      <h3 class="text-lg font-semibold text-white">
+        Sample Location XLSX
+      </h3>
+
+      <p class="text-sm text-slate-400 mt-1">
+        Example tower/location mapping file.
+      </p>
+    </div>
+
+    <a href="/download/sample-location"
+       class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg transition">
+      Download
+        </a>
+
+  </div>
+</div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</main>
+</div>
+
+<!-- ==================== ANALYSIS DASHBOARD ==================== -->
+<div id="dashboardContainer" style="display: none;">
+  <!-- Top Bar -->
+  <div class="bg-slate-900/70 backdrop-blur-sm border-b border-slate-800 h-14 flex items-center justify-between px-6 sticky top-0 z-10">
+    <div class="flex items-center gap-4">
+      <div class="logo w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-md">
+        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <button id="backToLandingBtn" class="text-sm bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition flex items-center gap-2"><i class="fas fa-arrow-left"></i> All Cases</button>
+      <span id="currentCaseName" class="text-sm font-medium text-slate-300 ml-2"></span>
+    </div>
+    <div class="user-chip flex items-center gap-3 bg-slate-800 px-3 py-1.5 rounded-full">
+      <div class="avatar w-7 h-7 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-xs font-bold">CDR</div>
+      <span class="text-sm hidden md:inline">Forensics</span>
+    </div>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="flex h-[calc(100vh-56px)] overflow-hidden">
+    <!-- LEFT SIDEBAR -->
+    <aside class="w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-800/50 flex flex-col h-full shadow-inner overflow-y-auto">
+      <div class="px-4 pt-6 pb-2">
+        <div class="text-[10px] font-semibold tracking-widest text-slate-500 uppercase mb-2">Analysis</div>
+        <div class="space-y-1">
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="records"> <i class="fas fa-list w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Records</span> </div>
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="top_contacts"> <i class="fas fa-address-book w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Top Contacts</span> </div>
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="timeline"> <i class="fas fa-chart-line w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Call & SMS Activity</span> </div>
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="duration"> <i class="fas fa-hourglass-half w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Duration Distribution</span> </div>
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="heatmap"> <i class="fas fa-calendar-week w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Call Pattern</span> </div>
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="radar"> <i class="fas fa-chart-pie w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Anomaly Radar</span> </div>
+        </div>
+      </div>
+      <div class="mx-4 my-3 border-t border-slate-800/50"></div>
+      <div class="px-4 pb-6">
+        <div class="text-[10px] font-semibold tracking-widest text-slate-500 uppercase mb-2">Location</div>
+        <div class="space-y-1">
+          <div class="sidebar-item group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer" data-view="map_view"> <i class="fas fa-map-marker-alt w-4 text-slate-400 group-hover:text-slate-200 transition"></i> <span class="text-slate-300 group-hover:text-white">Map View</span> </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT CONTENT -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Top Metrics Bar -->
+      <div id="metricsBar" class="grid grid-cols-5 gap-4 p-6 pb-0">
+        <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-3 text-center card-hover">
+          <div class="text-2xl font-bold text-purple-400" id="metricTotalCalls">0</div>
+          <div class="text-xs text-slate-400 mt-1">Total Calls</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-3 text-center card-hover">
+          <div class="text-2xl font-bold text-cyan-400" id="metricUniqueContacts">0</div>
+          <div class="text-xs text-slate-400 mt-1">Unique Contacts</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-3 text-center card-hover">
+          <div class="text-2xl font-bold text-emerald-400" id="metricTotalDuration">0</div>
+          <div class="text-xs text-slate-400 mt-1">Total Minutes</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-3 text-center card-hover">
+          <div class="text-2xl font-bold text-red-400" id="metricAnomalies">0</div>
+          <div class="text-xs text-slate-400 mt-1">Anomalies</div>
+        </div>
+        <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-3 text-center card-hover">
+          <div class="text-2xl font-bold text-pink-400" id="metricPeakHour">--:--</div>
+          <div class="text-xs text-slate-400 mt-1">Peak Activity</div>
+        </div>
+      </div>
+
+      <!-- Dynamic Row -->
+      <div class="flex-1 p-6 pt-4 overflow-hidden">
+        <div class="grid grid-cols-[3fr_1fr] gap-6 h-full" id="dynamicMainRow">
+          <div id="mainVisualization" class="min-h-0 h-full"></div>
+          <div id="insightsPanel" class="min-h-0 h-full">
+            <div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between insight-card">
+              <div class="text-slate-400 text-sm italic">Select a view to see insights</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input -->
+<input type="file" id="locTowerFile" style="display: none;" accept=".csv,.xlsx">
+
+<!-- Modal for CDR file upload -->
+<div id="caseModal" class="modal fixed inset-0 bg-black/80 hidden items-center justify-center z-50">
+  <div class="modal-content bg-slate-900 border border-slate-700 rounded-2xl p-6 w-96">
+    <h3 class="text-lg font-semibold mb-3">Upload CDR File</h3>
+    <input type="file" id="caseFile" class="form-control bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 w-full mb-3" accept=".csv,.xlsx">
+    <div id="modalError" class="text-red-400 text-sm mb-3"></div>
+    <div class="flex gap-2">
+      <button id="confirmCreateCase" class="btn bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm">Create</button>
+      <button class="btn-outline bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm close-modal">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== HELPER & GLOBAL STATE ====================
+async function apiFetch(url, options={}) { const res = await fetch(url, options); return res.json(); }
+let currentCaseId = null;
+let charts = {};
+let currentAnalysisView = 'records';
+let locationMap = null, locationMarker = null, locationCircle = null;
+
+// ==================== LANDING PAGE FUNCTIONS ====================
+function showView(view) {
+
+  document.getElementById('newCaseView').style.display =
+      view === 'new-case' ? 'block' : 'none';
+
+  document.getElementById('existingCasesView').style.display =
+      view === 'existing-cases' ? 'block' : 'none';
+
+  document.getElementById('sampleDataView').style.display =
+      view === 'sample-data' ? 'block' : 'none';
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    if(item.dataset.view === view) {
+      item.classList.add('active', 'text-slate-200', 'bg-purple-900/20');
+      item.classList.remove('text-slate-400');
+    } else {
+      item.classList.remove('active', 'text-slate-200', 'bg-purple-900/20');
+      item.classList.add('text-slate-400');
+    }
+  });
+
+  if(view === 'existing-cases') loadExistingCases();
+}
+
+function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+async function loadExistingCases() {
+  const cases = await apiFetch('/api/cases');
+  const container = document.getElementById('existingCasesList');
+  if(!cases.length) { container.innerHTML = `<div class="px-6 py-10 text-center text-slate-500 text-sm">No cases yet. Click "New Case" to start.</div>`; return; }
+  let html = `<div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-slate-800/50"><tr><th class="px-6 py-3 text-xs font-medium text-slate-400">Case Name</th><th class="px-6 py-3 text-xs font-medium text-slate-400">Status</th><th class="px-6 py-3 text-xs font-medium text-slate-400">Created</th><th class="px-6 py-3 text-xs font-medium text-slate-400"></th></tr></thead><tbody>`;
+  cases.forEach(c => {
+    html += `<tr class="border-t border-slate-800 hover:bg-slate-800/30 transition">
+              <td class="px-6 py-4 font-medium">${escapeHtml(c.name)}</td>
+              <td class="px-6 py-4"><span class="inline-flex items-center gap-1 text-emerald-400 text-xs bg-emerald-950/30 px-2 py-1 rounded-full"><i class="fas fa-circle text-[6px]"></i> Active</span></td>
+              <td class="px-6 py-4 text-slate-400 text-sm">${c.created_at || '—'}</td>
+              <td class="px-6 py-4"><button class="btn-start bg-purple-600 hover:bg-purple-500 px-4 py-1.5 rounded-lg text-xs font-medium transition shadow-lg shadow-purple-900/20" data-id="${c.id}">Investigate</button></td>
+             </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  container.innerHTML = html;
+  document.querySelectorAll('.btn-start').forEach(btn => btn.addEventListener('click', () => startInvestigation(btn.dataset.id)));
+}
+const caseModal = document.getElementById('caseModal');
+let pendingCaseName = '';
+document.getElementById('newCaseSubmitBtn').addEventListener('click', () => {
+  const caseName = document.getElementById('newCaseName').value.trim();
+  if(!caseName) { document.getElementById('newCaseError').innerText = 'Case name required'; return; }
+  pendingCaseName = caseName;
+  caseModal.style.display = 'flex';
+});
+document.querySelector('.close-modal')?.addEventListener('click', () => caseModal.style.display = 'none');
+document.getElementById('confirmCreateCase').onclick = async () => {
+  const file = document.getElementById('caseFile').files[0];
+  if(!file) { document.getElementById('modalError').innerText = 'CDR file required'; return; }
+  const fd = new FormData();
+  fd.append('case_name', pendingCaseName);
+  fd.append('file', file);
+  const res = await fetch('/api/cases', { method:'POST', body:fd });
+  const data = await res.json();
+  if(res.ok) {
+    caseModal.style.display = 'none';
+    document.getElementById('caseFile').value = '';
+    document.getElementById('newCaseName').value = '';
+    document.getElementById('newCaseError').innerText = '';
+    if(document.getElementById('existingCasesView').style.display === 'block') await loadExistingCases();
+    startInvestigation(data.id);
+  } else { document.getElementById('modalError').innerText = data.error || 'Creation failed'; }
+};
+
+// ==================== START INVESTIGATION ====================
+async function startInvestigation(caseId) {
+  currentCaseId = caseId;
+  const caseData = await apiFetch(`/api/cases/${caseId}`);
+  document.getElementById('currentCaseName').innerText = caseData.name || 'Case';
+  document.getElementById('landingPage').style.display = 'none';
+  document.getElementById('dashboardContainer').style.display = 'block';
+  document.querySelectorAll('#dashboardContainer .sidebar-item').forEach(item => {
+    item.removeEventListener('click', sidebarHandler);
+    item.addEventListener('click', sidebarHandler);
+    item.classList.add('hover:translate-x-1', 'transition-transform');
+  });
+  currentAnalysisView = 'records';
+  await loadMetrics();
+  await renderMainView();
+  updateSidebarActive('records');
+}
+function sidebarHandler(e) {
+  const view = e.currentTarget.dataset.view;
+  if(!view) return;
+  currentAnalysisView = view;
+  updateSidebarActive(view);
+  const metricsBar = document.getElementById('metricsBar');
+  if (view === 'map_view') {
+    metricsBar.style.display = 'none';
+  } else {
+    metricsBar.style.display = 'grid';
+  }
+  renderMainView();
+}
+function updateSidebarActive(view) {
+  document.querySelectorAll('#dashboardContainer .sidebar-item').forEach(item => {
+    if(item.dataset.view === view) item.classList.add('active');
+    else item.classList.remove('active');
+  });
+}
+async function loadMetrics() {
+  const res = await apiFetch('/api/analyse_cdr', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({case_id:currentCaseId}) });
+  if(!res.error) {
+    document.getElementById('metricTotalCalls').innerText = res.summary.total_calls || 0;
+    document.getElementById('metricUniqueContacts').innerText = res.top_contacts?.length || 0;
+    const totalSec = (res.summary.total_calls || 0) * (res.summary.avg_duration || 0);
+    document.getElementById('metricTotalDuration').innerText = Math.round(totalSec / 60);
+    const behav = await apiFetch(`/api/behavior?case_id=${currentCaseId}`);
+    document.getElementById('metricAnomalies').innerText = behav.summary?.total_anomalies || 0;
+    const hourly = await apiFetch(`/api/hourly?case_id=${currentCaseId}`);
+    if(hourly.length) {
+      const peak = hourly.reduce((a,b) => a.count > b.count ? a : b);
+      document.getElementById('metricPeakHour').innerText = `${peak.hour}:00`;
+    } else { document.getElementById('metricPeakHour').innerText = '--:--'; }
+  }
+}
+async function renderMainView() {
+  const mainContainer = document.getElementById('mainVisualization');
+  const insightsContainer = document.getElementById('insightsPanel');
+  mainContainer.innerHTML = '<div class="bg-slate-900/60 rounded-2xl p-6 h-full flex items-center justify-center">Loading visualization...</div>';
+  insightsContainer.innerHTML = '<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between insight-card"><div class="text-slate-400 text-sm italic">Loading insights...</div></div>';
+  if (currentAnalysisView === 'map_view') {
+    await renderMapView(mainContainer, insightsContainer);
+  } else {
+    switch(currentAnalysisView) {
+      case 'records': await renderRecords(mainContainer, insightsContainer); break;
+      case 'top_contacts': await renderTopContacts(mainContainer, insightsContainer); break;
+      case 'timeline': await renderTimeline(mainContainer, insightsContainer); break;
+      case 'duration': await renderDuration(mainContainer, insightsContainer); break;
+      case 'heatmap': await renderHeatmap(mainContainer, insightsContainer); break;
+      case 'radar': await renderRadar(mainContainer, insightsContainer); break;
+      default: mainContainer.innerHTML = '<div class="bg-slate-900/90 rounded-2xl p-6 text-center h-full">Select a view</div>';
+        insightsContainer.innerHTML = '<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full">No insights</div>';
+    }
+  }
+}
+async function renderMapView(container, insights) {
+  container.innerHTML = `<div class="full-map-container" id="mapFullContainer"></div>`;
+  if(!locationMap) {
+    locationMap = L.map('mapFullContainer').setView([20.5937,78.9629],5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OSM'}).addTo(locationMap);
+  } else {
+    locationMap.remove();
+    locationMap = L.map('mapFullContainer').setView([20.5937,78.9629],5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OSM'}).addTo(locationMap);
+  }
+  if(locationMarker) locationMap.removeLayer(locationMarker);
+  if(locationCircle) locationMap.removeLayer(locationCircle);
+  locationMarker = null; locationCircle = null;
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div>
+      <h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-map-marker-alt text-purple-400"></i> Location Intelligence</h3>
+      <div class="space-y-3 text-sm">
+        <button id="uploadTowerBtnMap" class="bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg text-xs w-full">Upload Tower File (CSV/XLSX)</button>
+        <div id="locationStatusMap" class="text-slate-400 text-xs">No tower data loaded.</div>
+        <div id="towerStats" class="text-slate-400 text-xs hidden"></div>
+        <div id="coverageArea" class="text-slate-400 text-xs hidden"></div>
+        <div id="dataSourceMap" class="text-slate-400 text-xs hidden"></div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('uploadTowerBtnMap').onclick = () => document.getElementById('locTowerFile').click();
+  if(!window.mapTowerListenerAttached) {
+    document.getElementById('locTowerFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const statusDiv = document.getElementById('locationStatusMap');
+      statusDiv.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Processing towers...';
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        const uploadRes = await fetch('/api/upload_towers', { method:'POST', body:fd });
+        const towersData = await uploadRes.json();
+        if(towersData.error) throw new Error(towersData.error);
+        const locRes = await fetch('/api/estimate_location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+        towers: towersData.towers
+        })
+        });
+        const loc = await locRes.json();
+        if(loc.error) throw new Error(loc.error);
+        statusDiv.innerHTML = `<strong>Estimated location:</strong> ${loc.lat.toFixed(4)}, ${loc.lon.toFixed(4)}<br>Accuracy: ±${Math.round(loc.accuracy)}m`;
+        const towerCount = towersData.towers.length;
+        document.getElementById('towerStats').innerHTML = `Total towers: ${towerCount}`;
+        document.getElementById('towerStats').classList.remove('hidden');
+        document.getElementById('coverageArea').innerHTML = `Coverage radius: ~${Math.round(loc.accuracy)}m`;
+        document.getElementById('coverageArea').classList.remove('hidden');
+        let sourceUsed = 'BeaconDB (fallback)';
+        if(loc.towers_used && loc.towers_used[0] && loc.towers_used[0].source) sourceUsed = loc.towers_used[0].source;
+        sourceUsed = 'Server API';
+        document.getElementById('dataSourceMap').innerHTML = `Source: ${sourceUsed}`;
+        document.getElementById('dataSourceMap').classList.remove('hidden');
+        if(locationMarker) locationMap.removeLayer(locationMarker);
+        if(locationCircle) locationMap.removeLayer(locationCircle);
+        locationMarker = L.marker([loc.lat, loc.lon]).addTo(locationMap).bindPopup('Estimated Location').openPopup();
+        locationCircle = L.circle([loc.lat, loc.lon], { radius: loc.accuracy, color: '#8B5CF6', weight: 1, opacity: 0.6, fillOpacity: 0.1 }).addTo(locationMap);
+        locationMap.setView([loc.lat, loc.lon], 12);
+      } catch(err) { statusDiv.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; }
+    });
+    window.mapTowerListenerAttached = true;
+  }
+  setTimeout(() => { if(locationMap) locationMap.invalidateSize(); }, 100);
+}
+async function renderRecords(container, insights) {
+  const res = await apiFetch(`/api/records?case_id=${currentCaseId}&page=1&page_size=30`);
+  if(res.error) { container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl p-6 h-full">Error: ${res.error}</div>`; return; }
+  let html = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 h-full flex flex-col">
+    <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+      <h2 class="font-semibold text-lg">Recent Call Records</h2>
+      <span class="text-xs bg-purple-900/30 px-2 py-1 rounded-full">${res.total} total</span>
+    </div>
+    <div class="table-scroll flex-1"><table class="w-full text-sm"><thead class="bg-slate-800/50 sticky top-0"><tr><th class="text-left p-3">DateTime</th><th>Number</th><th>Duration (s)</th><th>Type</th></tr></thead><tbody>`;
+  res.records.slice(0,30).forEach(r => { html += `<tr class="border-t border-slate-800"><td class="p-3">${r.call_datetime}</td><td>${r.called_number}</td><td>${r.duration_seconds}</td><td>${r.call_type || 'call'}</td></tr>`; });
+  html += `</tbody></table></div></div>`;
+  container.innerHTML = html;
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-info-circle text-purple-400"></i> Records Insights</h3>
+    <div class="space-y-2 text-sm"><div>Total records: <span class="font-mono text-cyan-400">${res.total}</span></div>
+    <div>Last 30 records shown</div><div class="text-slate-400 text-xs">Use pagination for full history</div></div></div>
+  </div>`;
+}
+async function renderTopContacts(container, insights) {
+  const freq = await apiFetch(`/api/frequency?case_id=${currentCaseId}`);
+  const top = freq.slice(0,8);
+  container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 p-6 h-full flex flex-col">
+    <h2 class="font-semibold text-lg mb-4">Top Contacts by Frequency</h2>
+    <div class="flex-1"><canvas id="topContactsCanvas"></canvas></div>
+  </div>`;
+  const ctx = document.getElementById('topContactsCanvas').getContext('2d');
+  if(charts.topContacts) charts.topContacts.destroy();
+  charts.topContacts = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: top.map(c=>c.called_number.slice(-8)), datasets: [{ data: top.map(c=>c.call_count), backgroundColor: '#22C55E', borderRadius: 8 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: true, plugins: { tooltip: { backgroundColor: '#0F172A' }, legend: { display: false } }, scales: { x: { title: { display: true, text: 'Number of Interactions', color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.08)' } }, y: { title: { display: true, text: 'Contact Number', color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+  });
+  const top1 = top[0];
+  const totalCalls = top.reduce((a,b)=>a+b.call_count,0);
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-chart-simple text-purple-400"></i> Contact Intelligence</h3>
+    <div class="space-y-2 text-sm"><div>Most contacted: <span class="font-mono text-cyan-400">${top1?.called_number || 'N/A'}</span></div>
+    <div>Interactions: <span class="font-mono">${top1?.call_count || 0}</span></div>
+    <div>Dominance: ${top1 ? Math.round((top1.call_count/totalCalls)*100) : 0}% of total</div></div></div>
+  </div>`;
+}
+async function renderTimeline(container, insights) {
+  const data = await apiFetch('/api/daily_timeline', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({case_id:currentCaseId}) });
+  container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 p-6 h-full flex flex-col">
+    <h2 class="font-semibold text-lg mb-4">Call & SMS Activity Over Time</h2>
+    <div class="flex-1"><canvas id="timelineCanvas"></canvas></div>
+  </div>`;
+  const ctx = document.getElementById('timelineCanvas').getContext('2d');
+  if(charts.timeline) charts.timeline.destroy();
+  charts.timeline = new Chart(ctx, {
+    type: 'line',
+    data: { labels: data.dates.slice(-14), datasets: [
+      { label: 'Calls', data: data.calls.slice(-14), borderColor: '#FF4FD8', backgroundColor: 'rgba(255,79,216,0.05)', fill: true, tension: 0.4, pointRadius: 3 },
+      { label: 'SMS', data: data.sms.slice(-14), borderColor: '#8B5CF6', backgroundColor: 'rgba(139,92,246,0.05)', fill: true, tension: 0.4, pointRadius: 3 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { backgroundColor: '#0F172A' }, legend: { labels: { color: '#E2E8F0' } } }, scales: { y: { title: { display: true, text: 'Number of Events', color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.08)' } }, x: { title: { display: true, text: 'Date', color: '#94A3B8' }, grid: { display: false } } } }
+  });
+  const totals = data.calls.map((v,i)=>v + data.sms[i]);
+  const maxIndex = totals.indexOf(Math.max(...totals));
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-chart-line text-purple-400"></i> Activity Peaks</h3>
+    <div class="space-y-2 text-sm"><div>Peak day: <span class="font-mono text-cyan-400">${data.dates.slice(-14)[maxIndex] || 'N/A'}</span></div>
+    <div>Highest volume: ${Math.max(...totals)} events</div><div class="text-slate-400 text-xs">Last 14 days trend</div></div></div>
+  </div>`;
+}
+async function renderDuration(container, insights) {
+  const res = await apiFetch('/api/forensic_anomalies', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({case_id:currentCaseId, analysis_type:'call_length'}) });
+  if(!res.data || !res.data.length) { container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl p-6 h-full">No duration data.</div>`; return; }
+  const durations = res.data.map(d => d.duration_sec);
+  const bins = [0,5,30,60,300,600,1800];
+  const labels = ['<5s','5-30s','30-60s','1-5m','5-10m','10-30m'];
+  const counts = new Array(labels.length).fill(0);
+  durations.forEach(d => { for(let i=0;i<bins.length-1;i++) if(d>=bins[i] && d<bins[i+1]){ counts[i]++; break; } });
+  container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 p-6 h-full flex flex-col">
+    <h2 class="font-semibold text-lg mb-4">Call Duration Distribution</h2>
+    <div class="flex-1"><canvas id="durationCanvas"></canvas></div>
+  </div>`;
+  const ctx = document.getElementById('durationCanvas').getContext('2d');
+  if(charts.duration) charts.duration.destroy();
+  charts.duration = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: '#8B5CF6', borderRadius: 8, barPercentage: 0.7 }] },
+    options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { backgroundColor: '#0F172A' }, legend: { display: false } }, scales: { y: { title: { display: true, text: 'Number of Calls', color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.08)' } }, x: { title: { display: true, text: 'Call Duration Range', color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+  });
+  const shortCalls = counts[0] + counts[1];
+  const longCalls = counts[4] + counts[5];
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-hourglass-half text-purple-400"></i> Duration Insights</h3>
+    <div class="space-y-2 text-sm"><div>Very short calls (&lt;30s): <span class="font-mono text-cyan-400">${shortCalls}</span></div>
+    <div>Long calls (&gt;5min): <span class="font-mono text-cyan-400">${longCalls}</span></div>
+    <div>Most common: ${labels[counts.indexOf(Math.max(...counts))]}</div></div></div>
+  </div>`;
+}
+async function renderHeatmap(container, insights) {
+  const res = await apiFetch('/api/analyse_cdr', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({case_id:currentCaseId}) });
+  if(!res.heatmap) { container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl p-6 h-full">Heatmap not available.</div>`; return; }
+  const { days, hours, data } = res.heatmap;
+  const flat = data.flat();
+  const maxVal = Math.max(...flat, 1);
+  const getColor = (v) => {
+    let intensity = v / maxVal;
+    if (intensity === 0) return '#1A1D35';
+    if (intensity < 0.3) return '#2E335C';
+    if (intensity < 0.6) return '#784BFF';
+    return '#FF4FD8';
+  };
+  let gridHtml = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 p-6 h-full flex flex-col">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="font-semibold text-lg">Call Pattern (Hour × Day)</h2>
+      <div class="flex items-center gap-2 text-xs"><span class="text-slate-400">Low</span><div class="w-24 h-2 rounded-full bg-gradient-to-r from-slate-700 via-purple-500 to-pink-500"></div><span>High</span></div>
+    </div>
+    <div class="heatmap-grid">`;
+  for(let i = 0; i < days.length; i++) {
+    for(let j = 0; j < hours.length; j++) {
+      const val = data[i][j];
+      const bg = getColor(val);
+      gridHtml += `<div class="heatmap-cell" style="background: ${bg};" title="${days[i]} ${hours[j]}:00 → ${val} events">${val > 0 ? val : ''}</div>`;
+    }
+  }
+  gridHtml += `</div>
+    <div class="mt-4 text-center text-xs text-slate-400">Hours (0–23) → | Days: ${days.join(', ')}</div>
+  </div>`;
+  container.innerHTML = gridHtml;
+  let maxHour = 0, maxHourVal = 0, maxDay = '', maxDayVal = 0;
+  for(let j=0;j<hours.length;j++) { let colSum = 0; for(let i=0;i<days.length;i++) colSum += data[i][j]; if(colSum > maxHourVal) { maxHourVal = colSum; maxHour = hours[j]; } }
+  for(let i=0;i<days.length;i++) { let rowSum = data[i].reduce((a,b)=>a+b,0); if(rowSum > maxDayVal) { maxDayVal = rowSum; maxDay = days[i]; } }
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-calendar-week text-purple-400"></i> Pattern Insights</h3>
+    <div class="space-y-2 text-sm"><div>Peak hour: <span class="font-mono text-cyan-400">${maxHour}:00</span></div>
+    <div>Peak day: <span class="font-mono text-cyan-400">${maxDay}</span></div>
+    <div>Highest intensity: ${maxDayVal} calls</div></div></div>
+  </div>`;
+}
+// ============ RADAR VIEW (legend removed) ============
+async function renderRadar(container, insights) {
+  const data = await apiFetch('/api/radar_data', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({case_id:currentCaseId}) });
+  container.innerHTML = `<div class="bg-slate-900/90 rounded-2xl border border-slate-800 p-6 h-full flex flex-col">
+    <h2 class="font-semibold text-lg mb-4">Anomaly Radar</h2>
+    <div class="radar-wrapper flex-1"><canvas id="radarCanvas"></canvas></div>
+  </div>`;
+  const ctx = document.getElementById('radarCanvas').getContext('2d');
+  if(charts.radar) charts.radar.destroy();
+  charts.radar = new Chart(ctx, {
+    type: 'radar',
+    data: { labels: data.labels, datasets: [
+      { label: 'Actual', data: data.actual, borderColor: '#FF4FD8', backgroundColor: 'rgba(255,79,216,0.15)', pointBackgroundColor: '#FF4FD8', pointBorderColor: '#0B0F1A', pointRadius: 4 },
+      { label: 'Baseline', data: data.baseline, borderColor: '#8B5CF6', backgroundColor: 'rgba(139,92,246,0.05)', pointBackgroundColor: '#8B5CF6', pointBorderColor: '#0B0F1A', pointRadius: 4 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: true, plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toFixed(2)}` } } }, scales: { r: { ticks: { stepSize: 2, color: '#94A3B8', backdropColor: 'transparent' }, grid: { color: 'rgba(255,255,255,0.08)' }, pointLabels: { color: '#E2E8F0', font: { size: 10 } } } } }
+  });
+  const maxIndex = data.actual.indexOf(Math.max(...data.actual));
+  insights.innerHTML = `<div class="bg-slate-900/50 rounded-xl border border-slate-800 p-4 h-full flex flex-col justify-between">
+    <div><h3 class="font-medium text-sm mb-2 flex items-center gap-2"><i class="fas fa-chart-pie text-purple-400"></i> Anomaly Intelligence</h3>
+    <div class="space-y-2 text-sm"><div>Highest risk: <span class="font-mono text-cyan-400">${data.labels[maxIndex]}</span></div>
+    <div>Score: ${data.actual[maxIndex].toFixed(1)} / 10</div>
+    <div class="text-slate-400 text-xs">Above baseline by ${(data.actual[maxIndex]-data.baseline[maxIndex]).toFixed(1)}</div></div></div>
+  </div>`;
+}
+// ==================== BACK & INIT ====================
+document.getElementById('backToLandingBtn').addEventListener('click', () => {
+  document.getElementById('dashboardContainer').style.display = 'none';
+  document.getElementById('landingPage').style.display = 'flex';
+  loadExistingCases();
+  currentCaseId = null;
+});
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => { const view = item.dataset.view; if(view) showView(view); });
+  });
+  showView('new-case');
+});
+</script>
+</body>
+</html>
